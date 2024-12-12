@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const mysql = require('mysql');
 const cors = require('cors'); // Import cors
 const app = express();
-const PORT = 3000;
+const PORT = 3002;
 var md5 = require('md5');
 
 
