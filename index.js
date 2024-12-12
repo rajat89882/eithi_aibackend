@@ -10,11 +10,12 @@ var md5 = require('md5');
 // MySQL Database Connection
 const db = mysql.createPool({
     connectionLimit: 10000, // Limits the number of simultaneous connections
-    host: "localhost",
+    host: "127.0.0.1",
     user: "root",
     password: "",
     database: "rdata",
     debug: false,
+    port: 3306
   });
   
   // Handle connection and errors
