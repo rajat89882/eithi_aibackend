@@ -9,14 +9,14 @@ var md5 = require('md5');
 
 // MySQL Database Connection
 const db = mysql.createPool({
-    connectionLimit: 10000, // Limits the number of simultaneous connections
-    host: "127.0.0.1",
+    connectionLimit: 10,
+    host: "127.0.0.1", // Explicitly use IPv4
     user: "root",
     password: "",
     database: "rdata",
+    port: 3306, // Ensure port is specified
     debug: false,
-    port: 3306
-  });
+});
   
   // Handle connection and errors
   db.getConnection((err, connection) => {
