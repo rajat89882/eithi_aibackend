@@ -10,7 +10,7 @@ var md5 = require('md5');
 // MySQL Database Connection
 const db = mysql.createPool({
     connectionLimit: 10,
-    host: "127.0.0.1", // Explicitly use IPv4
+    host: "localhost", // Explicitly use IPv4
     user: "root",
     password: "",
     database: "rdata",
