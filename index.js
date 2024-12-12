@@ -9,14 +9,13 @@ var md5 = require('md5');
 
 // MySQL Database Connection
 const db = mysql.createPool({
-    connectionLimit: 10,
-    host: "localhost", // Explicitly use IPv4
-    user: "root",
-    password: "",
-    database: "rdata",
-    port: 3306, // Ensure port is specified
+    connectionLimit: 10000, // Limits the number of simultaneous connections
+    host: "bjv7zymcg5dqzoirzmkl-mysql.services.clever-cloud.com",
+    user: "uf1qiobjetr5bitq",
+    password: "hnOQYB2Wjk7UAUP3DGRT",
+    database: "bjv7zymcg5dqzoirzmkl",
     debug: false,
-});
+  });
   
   // Handle connection and errors
   db.getConnection((err, connection) => {
