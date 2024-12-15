@@ -264,6 +264,52 @@ app.post('/admin/getallquiz', (req, res) => {
         return res.status(200).json({ result: result });
     });
 });
+app.post('/admin/getallquizuser', (req, res) => {
+    const { user_id } = req.body;
+
+    // Validate input
+    if (!user_id) {
+        return res.status(400).json({ error: 'User ID is required', status: '1' });
+    }
+
+    // Query to fetch quizzes for a specific user
+    const fetchQuizUsersQuery = `
+        SELECT 
+            q.id AS quiz_id, 
+            q.title AS quiz_title, 
+             q.id, 
+            qa.user_id, 
+            u.name AS user_name, 
+            u.email AS user_email, 
+            COUNT(qa.id) AS attempts_count
+        FROM 
+            quizzes q
+        LEFT JOIN 
+            quiz_attempts qa ON q.id = qa.quiz_id
+        LEFT JOIN 
+            signup u ON qa.user_id = u.id
+        WHERE 
+            qa.user_id = ?
+        GROUP BY 
+            q.id, qa.user_id
+        ORDER BY 
+            q.id DESC
+    `;
+
+    db.query(fetchQuizUsersQuery, [user_id], (err, result) => {
+        if (err) {
+            console.error('Error fetching quiz users:', err);
+            return res.status(500).json({ error: 'Database error', status: '2' });
+        }
+
+        if (result.length === 0) {
+            return res.status(404).json({ message: 'No quizzes found for the given user', status: '0' });
+        }
+
+        return res.status(200).json({ result });
+    });
+});
+
 app.post('/admin/getalluser', (req, res) => {
     
     // Check if email already exists in the database
@@ -546,22 +592,22 @@ app.post('/getQuizResults', async (req, res) => {
 
 // Function to calculate the score based on the user's answers and correct answers from the database
 const calculateScore = async (attempts) => {
-    let totalScore = 0;
-    let correctAnswers = 0;
+    let totalScore = 0; // Total risk score
+    let correctAttempts = 0; // Count of attempts with non-zero risk score
     let totalScores = []; // Array to store total score for each attempt
-    
+
     // Iterate through each attempt (each question answered by the user)
     for (const attempt of attempts) {
         const { question_id, answer_ids } = attempt;
-        
+
         // Ensure answer_ids is an array (split by commas in case of multiple answers)
         const answerIdsArray = answer_ids ? answer_ids.split(',').map(id => id.trim()) : [];
-        
+
         // Check if the user's answers are correct (compare with correct answers in the database)
         const { isCorrect, riskScore } = await isAnswerCorrect(question_id, answerIdsArray);
 
         if (isCorrect) {
-            correctAnswers++;
+            correctAttempts++;
         }
 
         // Add the risk score for the current attempt
@@ -571,13 +617,13 @@ const calculateScore = async (attempts) => {
         totalScores.push(riskScore);
     }
 
-    // Optionally return score as a percentage if you want to give a percentage score
-    const percentageScore = (correctAnswers / attempts.length) * 100;
+    // Calculate percentage score based on correct attempts
+    const percentageScore = (correctAttempts / attempts.length) * 100;
 
     return {
-        totalScore,
-        percentageScore,
-        correctAnswers,
+        totalScore, // Total risk score
+        percentageScore, // Percentage of questions answered correctly
+        correctAttempts, // Number of questions with non-zero risk score
         totalScores, // Array of total scores for each attempt
     };
 };
@@ -594,19 +640,15 @@ const isAnswerCorrect = (question_id, answer_ids) => {
                     return reject(err);
                 }
 
-                // Check if the user's answer matches the correct answer(s)
-                const correctAnswers = results.map(result => result.id); // List of correct answer IDs
-                const correctRiskScores = results.map(result => result.risk_score); // Risk scores of correct answers
+                // Calculate the total risk score based on selected answers
+                const totalRiskScore = results.reduce((sum, answer) => sum + answer.risk_score, 0);
 
-                // Determine if the user's selected answers match the correct answers (by sorting)
-                const isCorrect = JSON.stringify(answer_ids.sort()) === JSON.stringify(correctAnswers.sort());
-                
-                // Calculate the total risk score based on correct answers
-                const totalRiskScore = correctRiskScores.reduce((sum, score) => sum + score, 0);
+                // Determine if the answer is correct (total risk score > 0)
+                const isCorrect = totalRiskScore > 0;
 
                 resolve({
                     isCorrect,
-                    riskScore: totalRiskScore
+                    riskScore: totalRiskScore, // Return total risk score for this attempt
                 });
             }
         );
