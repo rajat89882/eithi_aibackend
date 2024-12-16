@@ -514,16 +514,40 @@ app.post('/submitQuiz', (req, res) => {
         return res.status(400).json({ error: 'Invalid request data' });
     }
 
-    // Insert each answer into the database
+    // Process each answer and check if it exists
     const queries = answers.map(({ questionId, answerIds }) => {
         const answerIdsString = Array.isArray(answerIds) ? answerIds.join(',') : answerIds; // For Checkboxes
+
         return new Promise((resolve, reject) => {
+            // First, check if an attempt already exists for this user, quiz, and question
             db.query(
-                'INSERT INTO quiz_attempts (user_id, quiz_id, question_id, answer_ids) VALUES (?, ?, ?, ?)',
-                [userId, quizId, questionId, answerIdsString],
-                (err, result) => {
+                'SELECT id FROM quiz_attempts WHERE user_id = ? AND quiz_id = ? AND question_id = ?',
+                [userId, quizId, questionId],
+                (err, results) => {
                     if (err) return reject(err);
-                    resolve(result);
+
+                    if (results.length > 0) {
+                        // Record exists, update it
+                        const attemptId = results[0].id;
+                        db.query(
+                            'UPDATE quiz_attempts SET answer_ids = ? WHERE id = ?',
+                            [answerIdsString, attemptId],
+                            (updateErr, updateResult) => {
+                                if (updateErr) return reject(updateErr);
+                                resolve(updateResult);
+                            }
+                        );
+                    } else {
+                        // Record does not exist, insert it
+                        db.query(
+                            'INSERT INTO quiz_attempts (user_id, quiz_id, question_id, answer_ids) VALUES (?, ?, ?, ?)',
+                            [userId, quizId, questionId, answerIdsString],
+                            (insertErr, insertResult) => {
+                                if (insertErr) return reject(insertErr);
+                                resolve(insertResult);
+                            }
+                        );
+                    }
                 }
             );
         });
@@ -537,6 +561,7 @@ app.post('/submitQuiz', (req, res) => {
             res.status(500).json({ error: 'Failed to save quiz attempt' });
         });
 });
+
 app.post('/getQuizResults', async (req, res) => {
     const { userId, quizId } = req.body;
 
@@ -592,9 +617,13 @@ app.post('/getQuizResults', async (req, res) => {
 
 // Function to calculate the score based on the user's answers and correct answers from the database
 const calculateScore = async (attempts) => {
-    let totalScore = 0; // Total risk score
+    let totalScore = 0; // Total risk score from user's selected answers
     let correctAttempts = 0; // Count of attempts with non-zero risk score
     let totalScores = []; // Array to store total score for each attempt
+
+    // Fetch the sum of all possible risk scores for the quiz questions
+    const questionIds = attempts.map(attempt => attempt.question_id);
+    const outOfScore = await getSumOfAllRiskScores(questionIds);
 
     // Iterate through each attempt (each question answered by the user)
     for (const attempt of attempts) {
@@ -618,15 +647,44 @@ const calculateScore = async (attempts) => {
     }
 
     // Calculate percentage score based on correct attempts
-    const percentageScore = (correctAttempts / attempts.length) * 100;
+    //const percentageScore = (correctAttempts / attempts.length) * 100;
+    const percentageScore = ((totalScore / outOfScore) * 100).toFixed(2);
+
 
     return {
-        totalScore, // Total risk score
-        percentageScore, // Percentage of questions answered correctly
-        correctAttempts, // Number of questions with non-zero risk score
-        totalScores, // Array of total scores for each attempt
+        totalScore,        // Total risk score from the user's answers
+        percentageScore,   // Percentage of questions answered correctly
+        correctAttempts,   // Number of questions with non-zero risk score
+        totalScores,       // Array of total scores for each attempt
+        outOfScore,        // Total of all possible risk scores
     };
 };
+
+
+
+// Helper function to fetch the maximum possible risk score for a question
+const getSumOfAllRiskScores = (questionIds) => {
+    return new Promise((resolve, reject) => {
+        db.query(
+            `SELECT SUM(risk_score) AS totalRiskScore 
+             FROM answers 
+             WHERE question_id IN (?)`,
+            [questionIds],
+            (err, results) => {
+                if (err) {
+                    return reject(err);
+                }
+
+                // Return the total sum of all risk scores
+                const totalRiskScore = results[0]?.totalRiskScore || 0;
+                resolve(totalRiskScore);
+            }
+        );
+    });
+};
+
+
+
 
 // Function to check if the user's answers are correct (dynamic version)
 const isAnswerCorrect = (question_id, answer_ids) => {
