@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const mysql = require('mysql');
 const cors = require('cors'); // Import cors
 const app = express();
-const PORT = 3002;
+const PORT = 3000;
 var md5 = require('md5');
 
 
@@ -15,26 +15,26 @@ const db = mysql.createPool({
     password: "hnOQYB2Wjk7UAUP3DGRT",
     database: "bjv7zymcg5dqzoirzmkl",
     debug: false,
-  });
-  
-  // Handle connection and errors
-  db.getConnection((err, connection) => {
+});
+
+// Handle connection and errors
+db.getConnection((err, connection) => {
     if (err) {
-      if (err.code === "PROTOCOL_CONNECTION_LOST") {
-        console.error("Database connection was closed.");
-      }
-      if (err.code === "ER_CON_COUNT_ERROR") {
-        console.error("Database has too many connections.");
-      }
-      if (err.code === "ECONNREFUSED") {
-        console.error("Database connection was refused.");
-      }
+        if (err.code === "PROTOCOL_CONNECTION_LOST") {
+            console.error("Database connection was closed.");
+        }
+        if (err.code === "ER_CON_COUNT_ERROR") {
+            console.error("Database has too many connections.");
+        }
+        if (err.code === "ECONNREFUSED") {
+            console.error("Database connection was refused.");
+        }
     }
-  
+
     if (connection) connection.release(); // Release the connection back to the pool
-  
+
     return;
-  });
+});
 // Register Route
 app.use(cors());
 
@@ -102,42 +102,42 @@ app.post('/login', async (req, res) => {
     var pass = md5(password);
     console.log(req.body);
     const checkEmailQuery = 'SELECT * FROM signup WHERE email = ? And password =?';
-    db.query(checkEmailQuery, [email,pass], (err, result) => {
+    db.query(checkEmailQuery, [email, pass], (err, result) => {
         if (err) {
             console.error('Error checking email:', err);
-            return res.status(200).json({ error: 'Database error',status:'2' });
+            return res.status(200).json({ error: 'Database error', status: '2' });
         }
         console.log(result.length);
         if (result.length === 0) {
             // Email already exists
-            return res.status(200).json({ message: 'Invalid detail',status:'2' });
+            return res.status(200).json({ message: 'Invalid detail', status: '2' });
         } else {
-            res.status(201).json({ message: 'Login successfully', result: result,status:'1' });
+            res.status(201).json({ message: 'Login successfully', result: result, status: '1' });
         }
 
         // If email does not exist, insert the new user
-        
+
     });
 });
 app.post('/admin/login', async (req, res) => {
     const { email, password } = req.body;
     var pass = md5(password);
     const checkEmailQuery = 'SELECT * FROM admin WHERE email = ? And password =?';
-    db.query(checkEmailQuery, [email,pass], (err, result) => {
+    db.query(checkEmailQuery, [email, pass], (err, result) => {
         if (err) {
             console.error('Error checking email:', err);
-            return res.status(200).json({ error: 'Database error',status:'2' });
+            return res.status(200).json({ error: 'Database error', status: '2' });
         }
         console.log(result);
         if (result.length === 0) {
             // Email already exists
-            return res.status(200).json({ message: 'Invalid detail',status:'2' });
+            return res.status(200).json({ message: 'Invalid detail', status: '2' });
         } else {
-            res.status(201).json({ message: 'Login successfully', result: result,status:'1' });
+            res.status(201).json({ message: 'Login successfully', result: result, status: '1' });
         }
 
         // If email does not exist, insert the new user
-        
+
     });
 });
 app.post('/admin/quiz', (req, res) => {
@@ -253,7 +253,7 @@ function rollbackTransaction(connection, res, message, error) {
     });
 }
 app.post('/admin/getallquiz', (req, res) => {
-    
+
     // Check if email already exists in the database
     const checkEmailQuery = 'SELECT * FROM quizzes ORDER BY id desc';
     db.query(checkEmailQuery, (err, result) => {
@@ -311,7 +311,7 @@ app.post('/admin/getallquizuser', (req, res) => {
 });
 
 app.post('/admin/getalluser', (req, res) => {
-    
+
     // Check if email already exists in the database
     const checkEmailQuery = 'SELECT * FROM signup ORDER BY id desc';
     db.query(checkEmailQuery, (err, result) => {
@@ -326,20 +326,20 @@ app.post('/admin/deletequiz', (req, res) => {
     const { id } = req.body;
 
     if (!id) {
-        return res.status(400).json({ error: "Quiz ID is required" });
+        return res.status(200).json({ error: "Quiz ID is required" });
     }
 
     db.getConnection((err, connection) => {
         if (err) {
             console.error("Database connection error:", err);
-            return res.status(500).json({ error: "Database connection error" });
+            return res.status(200).json({ error: "Database connection error" });
         }
 
         // Begin transaction
         connection.beginTransaction((transactionError) => {
             if (transactionError) {
                 connection.release();
-                return res.status(500).json({ error: "Failed to start transaction" });
+                return res.status(200).json({ error: "Failed to start transaction" });
             }
 
             // Delete answers related to the quiz
@@ -352,7 +352,7 @@ app.post('/admin/deletequiz', (req, res) => {
                     if (error) {
                         return connection.rollback(() => {
                             connection.release();
-                            res.status(500).json({ error: "Failed to delete answers" });
+                            res.status(200).json({ error: "Failed to delete answers" });
                         });
                     }
 
@@ -364,7 +364,7 @@ app.post('/admin/deletequiz', (req, res) => {
                             if (error) {
                                 return connection.rollback(() => {
                                     connection.release();
-                                    res.status(500).json({ error: "Failed to delete questions" });
+                                    res.status(200).json({ error: "Failed to delete questions" });
                                 });
                             }
 
@@ -376,7 +376,7 @@ app.post('/admin/deletequiz', (req, res) => {
                                     if (error) {
                                         return connection.rollback(() => {
                                             connection.release();
-                                            res.status(500).json({ error: "Failed to delete quiz" });
+                                            res.status(200).json({ error: "Failed to delete quiz" });
                                         });
                                     }
 
@@ -384,7 +384,7 @@ app.post('/admin/deletequiz', (req, res) => {
                                     connection.commit((commitError) => {
                                         connection.release();
                                         if (commitError) {
-                                            return res.status(500).json({ error: "Failed to commit transaction" });
+                                            return res.status(200).json({ error: "Failed to commit transaction" });
                                         }
 
                                         res.status(200).json({ message: "Quiz deleted successfully" });
@@ -664,6 +664,8 @@ const calculateScore = async (attempts) => {
 
 // Helper function to fetch the maximum possible risk score for a question
 const getSumOfAllRiskScores = (questionIds) => {
+    console.log('jj');
+    console.log(questionIds);
     return new Promise((resolve, reject) => {
         db.query(
             `SELECT SUM(risk_score) AS totalRiskScore 
