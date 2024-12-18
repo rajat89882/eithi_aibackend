@@ -9,7 +9,7 @@ var md5 = require('md5');
 
 // MySQL Database Connection
 const db = mysql.createPool({
-    connectionLimit: 10000, // Limits the number of simultaneous connections
+    connectionLimit: 10,
     host: "bjv7zymcg5dqzoirzmkl-mysql.services.clever-cloud.com",
     user: "uf1qiobjetr5bitq",
     password: "hnOQYB2Wjk7UAUP3DGRT",
@@ -29,6 +29,10 @@ db.getConnection((err, connection) => {
         if (err.code === "ECONNREFUSED") {
             console.error("Database connection was refused.");
         }
+    }
+
+    if (connection) {
+        console.log('Database is connected');
     }
 
     if (connection) connection.release(); // Release the connection back to the pool
@@ -264,6 +268,30 @@ app.post('/admin/getallquiz', (req, res) => {
         return res.status(200).json({ result: result });
     });
 });
+app.post('/admin/getallquizusers', (req, res) => {
+
+    // Check if email already exists in the database
+    const userId = req.body.userId; // Get user_id from query parameters
+    console.log(userId);
+    const checkUserAttemptQuery = `
+        SELECT qa.user_id, qa.quiz_id, q.id AS quiz_id, q.* 
+        FROM quiz_attempts qa
+        JOIN quizzes q ON qa.quiz_id = q.id
+        WHERE qa.user_id = ?
+        GROUP BY qa.quiz_id
+        ORDER BY qa.id DESC
+    `;
+
+    db.query(checkUserAttemptQuery, [userId], (err, result) => {
+        if (err) {
+            console.error('Error fetching user quiz attempts:', err);
+            return res.status(500).json({ error: 'Database error', status: '2' });
+        }
+
+        return res.status(200).json({ result: result });
+    });
+
+});
 app.post('/admin/getallquizuser', (req, res) => {
     const { user_id } = req.body;
 
@@ -303,7 +331,7 @@ app.post('/admin/getallquizuser', (req, res) => {
         }
 
         if (result.length === 0) {
-            return res.status(404).json({ message: 'No quizzes found for the given user', status: '0' });
+            return res.status(200).json({ message: 'No quizzes found for the given user', status: '0' });
         }
 
         return res.status(200).json({ result });
@@ -322,73 +350,95 @@ app.post('/admin/getalluser', (req, res) => {
         return res.status(200).json({ result: result });
     });
 });
+
 app.post('/admin/deletequiz', (req, res) => {
     const { id } = req.body;
 
     if (!id) {
-        return res.status(200).json({ error: "Quiz ID is required" });
+        return res.status(400).json({ error: "Quiz ID is required" });
     }
 
     db.getConnection((err, connection) => {
         if (err) {
             console.error("Database connection error:", err);
-            return res.status(200).json({ error: "Database connection error" });
+            return res.status(500).json({ error: "Database connection error" });
         }
 
         // Begin transaction
         connection.beginTransaction((transactionError) => {
             if (transactionError) {
                 connection.release();
-                return res.status(200).json({ error: "Failed to start transaction" });
+                return res.status(500).json({ error: "Failed to start transaction" });
             }
 
-            // Delete answers related to the quiz
+            // Delete quiz_attempts related to the quiz
             connection.query(
-                `DELETE a FROM answers a
-                JOIN questions q ON a.question_id = q.id
-                WHERE q.quiz_id = ?`,
+                `DELETE qa FROM quiz_attempts qa
+                 JOIN questions q ON qa.question_id = q.id
+                 WHERE q.quiz_id = ?`,
                 [id],
                 (error) => {
                     if (error) {
                         return connection.rollback(() => {
+                            console.error("Failed to delete quiz_attempts:", error);
                             connection.release();
-                            res.status(200).json({ error: "Failed to delete answers" });
+                            res.status(500).json({ error: "Failed to delete quiz attempts" });
                         });
                     }
 
-                    // Delete questions related to the quiz
+                    // Delete answers related to the quiz
                     connection.query(
-                        `DELETE FROM questions WHERE quiz_id = ?`,
+                        `DELETE a FROM answers a
+                         JOIN questions q ON a.question_id = q.id
+                         WHERE q.quiz_id = ?`,
                         [id],
                         (error) => {
                             if (error) {
                                 return connection.rollback(() => {
+                                    console.error("Failed to delete answers:", error);
                                     connection.release();
-                                    res.status(200).json({ error: "Failed to delete questions" });
+                                    res.status(500).json({ error: "Failed to delete answers" });
                                 });
                             }
 
-                            // Delete the quiz itself
+                            // Delete questions related to the quiz
                             connection.query(
-                                `DELETE FROM quizzes WHERE id = ?`,
+                                `DELETE FROM questions WHERE quiz_id = ?`,
                                 [id],
                                 (error) => {
                                     if (error) {
                                         return connection.rollback(() => {
+                                            console.error("Failed to delete questions:", error);
                                             connection.release();
-                                            res.status(200).json({ error: "Failed to delete quiz" });
+                                            res.status(500).json({ error: "Failed to delete questions" });
                                         });
                                     }
 
-                                    // Commit transaction
-                                    connection.commit((commitError) => {
-                                        connection.release();
-                                        if (commitError) {
-                                            return res.status(200).json({ error: "Failed to commit transaction" });
-                                        }
+                                    // Delete the quiz itself
+                                    connection.query(
+                                        `DELETE FROM quizzes WHERE id = ?`,
+                                        [id],
+                                        (error) => {
+                                            if (error) {
+                                                return connection.rollback(() => {
+                                                    console.error("Failed to delete quiz:", error);
+                                                    connection.release();
+                                                    res.status(500).json({ error: "Failed to delete quiz" });
+                                                });
+                                            }
 
-                                        res.status(200).json({ message: "Quiz deleted successfully" });
-                                    });
+                                            // Commit transaction
+                                            connection.commit((commitError) => {
+                                                connection.release();
+                                                if (commitError) {
+                                                    console.error("Failed to commit transaction:", commitError);
+                                                    return res.status(500).json({ error: "Failed to commit transaction" });
+                                                }
+
+                                                res.status(200).json({ message: "Quiz deleted successfully" });
+                                            });
+                                        }
+                                    );
                                 }
                             );
                         }
@@ -398,6 +448,8 @@ app.post('/admin/deletequiz', (req, res) => {
         });
     });
 });
+
+
 app.post('/admin/deleteuser', (req, res) => {
     const { id } = req.body;
 
@@ -418,32 +470,50 @@ app.post('/admin/deleteuser', (req, res) => {
                 return res.status(500).json({ error: "Failed to start transaction" });
             }
 
-            // Delete the user
+            // Step 1: Delete related records in child tables
             connection.query(
-                `DELETE FROM signup WHERE id = ?`,
+                `DELETE FROM quiz_attempts WHERE user_id = ?`, // Example child table
                 [id],
                 (error) => {
                     if (error) {
                         return connection.rollback(() => {
+                            console.error("Failed to delete quiz_attempts:", error);
                             connection.release();
-                            res.status(500).json({ error: "Failed to delete user" });
+                            res.status(500).json({ error: "Failed to delete related quiz attempts" });
                         });
                     }
 
-                    // Commit transaction
-                    connection.commit((commitError) => {
-                        connection.release();
-                        if (commitError) {
-                            return res.status(500).json({ error: "Failed to commit transaction" });
-                        }
+                    // Step 2: Delete user from signup table
+                    connection.query(
+                        `DELETE FROM signup WHERE id = ?`,
+                        [id],
+                        (error) => {
+                            if (error) {
+                                return connection.rollback(() => {
+                                    console.error("Failed to delete user:", error);
+                                    connection.release();
+                                    res.status(500).json({ error: "Failed to delete user" });
+                                });
+                            }
 
-                        res.status(200).json({ message: "User deleted successfully" });
-                    });
+                            // Commit transaction
+                            connection.commit((commitError) => {
+                                connection.release();
+                                if (commitError) {
+                                    console.error("Transaction commit failed:", commitError);
+                                    return res.status(500).json({ error: "Failed to commit transaction" });
+                                }
+
+                                res.status(200).json({ message: "User deleted successfully" });
+                            });
+                        }
+                    );
                 }
             );
         });
     });
 });
+
 
 app.post('/admin/getquiz', (req, res) => {
     const quizId = req.body.id;
@@ -511,7 +581,7 @@ app.post('/submitQuiz', (req, res) => {
     const { userId, quizId, answers } = req.body;
 
     if (!userId || !quizId || !answers || !Array.isArray(answers)) {
-        return res.status(400).json({ error: 'Invalid request data' });
+        return res.status(200).json({ error: 'Invalid request data' });
     }
 
     // Process each answer and check if it exists
@@ -558,61 +628,81 @@ app.post('/submitQuiz', (req, res) => {
         .then(() => res.status(200).json({ message: 'Quiz submitted successfully' }))
         .catch((err) => {
             console.error('Error saving quiz attempt:', err);
-            res.status(500).json({ error: 'Failed to save quiz attempt' });
+            res.status(200).json({ error: 'Failed to save quiz attempt' });
         });
 });
 
 app.post('/getQuizResults', async (req, res) => {
     const { userId, quizId } = req.body;
 
+    // Validate request data
     if (!userId || !quizId) {
         return res.status(400).json({ error: 'Invalid request data' });
     }
 
-    // Query the database to fetch the quiz title and user's answers for this quiz attempt
-    db.query(
-        `SELECT q.title, qa.question_id, qa.answer_ids,qq.text 
-         FROM quiz_attempts qa
-         JOIN quizzes q ON qa.quiz_id = q.id 
-         JOIN questions qq ON qa.question_id = qq.id 
-         WHERE qa.user_id = ? AND qa.quiz_id = ?`,
-        [userId, quizId],
-        async (err, results) => {
-            if (err) {
-                console.error('Error fetching quiz results:', err);
-                return res.status(500).json({ error: 'Failed to fetch quiz results' });
+    try {
+        // Query the database
+        db.query(
+            `SELECT q.title, qa.question_id, qa.answer_ids, qq.text 
+             FROM quiz_attempts qa
+             JOIN quizzes q ON qa.quiz_id = q.id 
+             JOIN questions qq ON qa.question_id = qq.id 
+             WHERE qa.user_id = ? AND qa.quiz_id = ?`,
+            [userId, quizId], // Pass parameters here
+            async (err, results) => {
+                if (err) {
+                    console.error('Error fetching quiz results:', err);
+                    return res.status(500).json({ error: 'Failed to fetch quiz results' });
+                }
+
+                if (results.length === 0) {
+                    return res.status(404).json({ error: 'No attempts found for this quiz' });
+                }
+
+                // Extract quiz title
+                const quizTitle = results[0].title;
+
+                try {
+                    // Calculate the score
+                    const scoreData = await calculateScore(results);
+
+                    // Map totalScore to each attempt
+                    const attemptsWithScore = results.map((attempt, index) => ({
+                        ...attempt,
+                        totalScore: scoreData.totalScores[index] || 0, // Safeguard for undefined scores
+                    }));
+
+                    res.status(200).json({
+                        message: 'Quiz results retrieved successfully',
+                        quizTitle,
+                        score: scoreData,
+                        attempts: attemptsWithScore,
+                    });
+                } catch (err) {
+                    console.error('Error calculating score:', err);
+                    res.status(500).json({ error: 'Failed to calculate score' });
+                }
             }
+        );
+    } catch (error) {
+        console.error('Unexpected error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-            if (results.length === 0) {
-                return res.status(404).json({ error: 'No attempts found for this quiz' });
-            }
 
-            // Extract quiz title
-            const quizTitle = results[0].title;
+app.post('/getQuiztotal', async (req, res) => {
+    const { id } = req.body;
 
-            // Calculate the score based on the user's answers
-            try {
-                const scoreData = await calculateScore(results); // Calculate score based on answers
-                // Add the totalScore to each attempt
-                const attemptsWithScore = results.map((attempt, index) => {
-                    return {
-                        ...attempt,  // Spread the existing data
-                        totalScore: scoreData.totalScores[index], // Add totalScore for each attempt
-                    };
-                });
+    const selectQuery = "SELECT q.id AS quiz_id, q.title AS quiz_title, COALESCE(SUM(a.risk_score), 0) AS total_risk_score FROM quizzes q LEFT JOIN questions ques ON q.id = ques.quiz_id LEFT JOIN answers a ON ques.id = a.question_id GROUP BY q.id, q.title HAVING quiz_id= ? ORDER BY q.id ASC";
 
-                res.status(200).json({
-                    message: 'Quiz results retrieved successfully',
-                    quizTitle: quizTitle,  // Add the quiz title to the response
-                    score: scoreData,
-                    attempts: attemptsWithScore,  // Include attempts with individual totalScore
-                });
-            } catch (err) {
-                console.error('Error calculating score:', err);
-                res.status(500).json({ error: 'Failed to calculate score' });
-            }
+    db.query(selectQuery, [id], function (error, result) {
+        if (error) {
+            return console.log('error in total Api');
         }
-    );
+        return res.status(200).json({status:1, data:result[0].total_risk_score})
+
+    });
 });
 
 // Function to calculate the score based on the user's answers and correct answers from the database
@@ -650,7 +740,7 @@ const calculateScore = async (attempts) => {
     //const percentageScore = (correctAttempts / attempts.length) * 100;
     const percentageScore = ((totalScore / outOfScore) * 100).toFixed(2);
 
-
+    console.log(outOfScore);
     return {
         totalScore,        // Total risk score from the user's answers
         percentageScore,   // Percentage of questions answered correctly
