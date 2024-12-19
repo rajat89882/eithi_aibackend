@@ -8,15 +8,23 @@ var md5 = require('md5');
 
 
 // MySQL Database Connection
-const db = mysql.createPool({
-    host: "bjv7zymcg5dqzoirzmkl-mysql.services.clever-cloud.com",
-    user: "uf1qiobjetr5bitq",
-    password: "hnOQYB2Wjk7UAUP3DGRT",
-    database: "bjv7zymcg5dqzoirzmkl",
-    debug: false,
-    connectionLimit: 5,
-  });
+// const db = mysql.createPool({
+//     host: "bjv7zymcg5dqzoirzmkl-mysql.services.clever-cloud.com",
+//     user: "uf1qiobjetr5bitq",
+//     password: "hnOQYB2Wjk7UAUP3DGRT",
+//     database: "bjv7zymcg5dqzoirzmkl",
+//     debug: false,
+//     connectionLimit: 100,
+//   });
   
+const db = mysql.createPool({
+    host: "223.237.54.143",
+    user: "twrvvgmy_ethiai_db_user",
+    password: "ethiai_db_user@2026",
+    database: "twrvvgmy_ethiai_db",
+    debug: false,
+    connectionLimit: 10,
+  });
 
 // Handle connection and errors
 db.getConnection((err, connection) => {
