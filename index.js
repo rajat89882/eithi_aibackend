@@ -9,36 +9,40 @@ var md5 = require('md5');
 
 // MySQL Database Connection
 const db = mysql.createPool({
-   
     host: "bjv7zymcg5dqzoirzmkl-mysql.services.clever-cloud.com",
     user: "uf1qiobjetr5bitq",
     password: "hnOQYB2Wjk7UAUP3DGRT",
     database: "bjv7zymcg5dqzoirzmkl",
     debug: false,
+    connectionLimit: 5,
   });
   
 
 // Handle connection and errors
 db.getConnection((err, connection) => {
     if (err) {
-        if (err.code === "PROTOCOL_CONNECTION_LOST") {
-            console.error("Database connection was closed.");
+        // Handle specific error codes
+        switch (err.code) {
+            case "PROTOCOL_CONNECTION_LOST":
+                console.error("Database connection was closed.");
+                break;
+            case "ER_CON_COUNT_ERROR":
+                console.error("Database has too many connections.");
+                break;
+            case "ECONNREFUSED":
+                console.error("Database connection was refused.");
+                break;
+            default:
+                console.error("Database connection error:", err.message);
+                break;
         }
-        if (err.code === "ER_CON_COUNT_ERROR") {
-            console.error("Database has too many connections.");
-        }
-        if (err.code === "ECONNREFUSED") {
-            console.error("Database connection was refused.");
-        }
+        return; // Exit if there is an error
     }
 
     if (connection) {
-        console.log('Database is connected');
+        console.log("Database is connected successfully.");
+        connection.release(); // Release the connection back to the pool
     }
-
-    if (connection) connection.release(); // Release the connection back to the pool
-
-    return;
 });
 // Register Route
 app.use(cors());
